@@ -20,10 +20,19 @@ class TradierClient:
     Live: api.tradier.com
     """
 
+    SANDBOX_URL = "https://sandbox.tradier.com/v1"
+    LIVE_URL = "https://api.tradier.com/v1"
+
     def __init__(self):
         self.token = Config.TRADIER_ACCESS_TOKEN
         self.account_id = Config.TRADIER_ACCOUNT_ID
-        self.base = Config.TRADIER_BASE_URL.rstrip("/")
+        # Paper mode always uses sandbox
+        if Config.PAPER_MODE:
+            self.base = self.SANDBOX_URL.rstrip("/")
+            if self.token and self.account_id:
+                log.info("PAPER MODE — Tradier sandbox active")
+        else:
+            self.base = (Config.TRADIER_BASE_URL or self.LIVE_URL).rstrip("/")
 
     def _headers(self):
         return {

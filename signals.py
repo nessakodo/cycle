@@ -38,57 +38,59 @@ def _clear_cache(key):
 
 
 # ────────────────────────────────────────────
-# 1. ON-CHAIN: Glassnode Exchange Net Flow
+# 1. FINNHUB: Crypto Price/Volume/Technical (replaces Glassnode)
 # ────────────────────────────────────────────
-def get_onchain_signal() -> float:
+def get_finnhub_signal(symbol: str = "BINANCE:BTCUSDT") -> float:
     """
-    Glassnode exchange net flow volume (BTC).
-    Positive net flow = coins TO exchanges = bearish (selling pressure).
-    Negative net flow = coins leaving = bullish (accumulation).
+    Finnhub crypto candle: price change + volume trend.
+    Positive price/volume momentum = bullish. Weight 35%.
     """
-    if not Config.GLASSNODE_API_KEY:
+    if not Config.FINNHUB_API_KEY:
         return 0.0
 
-    cache_key = "onchain"
+    cache_key = f"finnhub_{symbol}"
     cached = _cached(cache_key)
     if cached is not None:
         return cached
 
     try:
+        to_ts = int(time.time())
+        from_ts = to_ts - 3600 * 2  # 2 hours
         resp = requests.get(
-            "https://api.glassnode.com/v1/metrics/transactions/transfers_volume_exchanges_net",
+            "https://finnhub.io/api/v1/crypto/candle",
             params={
-                "a": "BTC",
-                "api_key": Config.GLASSNODE_API_KEY,
-                "i": "1h",
-                "s": str(int(time.time()) - 7200),
+                "symbol": symbol,
+                "resolution": "15",
+                "from": from_ts,
+                "to": to_ts,
+                "token": Config.FINNHUB_API_KEY,
             },
             timeout=10,
         )
         resp.raise_for_status()
         data = resp.json()
-        if not data:
+        if not data or "c" not in data or not data["c"]:
             return 0.0
 
-        latest = data[-1].get("v", 0)
+        closes = data.get("c", [])
+        volumes = data.get("v", [])
+        if len(closes) < 2:
+            return 0.0
 
-        if latest > 500:
-            sig = -1.0
-        elif latest > 200:
-            sig = -0.5
-        elif latest < -500:
-            sig = 1.0
-        elif latest < -200:
-            sig = 0.5
-        else:
-            sig = 0.0
+        price_change = (closes[-1] - closes[0]) / closes[0] if closes[0] else 0
+        vol_trend = (
+            (volumes[-1] - volumes[0]) / volumes[0]
+            if len(volumes) >= 2 and volumes[0]
+            else 0
+        )
+        sig = max(-1.0, min(1.0, price_change * 10 + vol_trend * 0.5))
 
-        log.debug(f"Onchain net flow: {latest:.0f} BTC -> signal {sig}")
+        log.debug(f"Finnhub {symbol}: price_chg={price_change:.3f} vol_trend={vol_trend:.2f} -> {sig:.2f}")
         _set_cache(cache_key, sig)
         return sig
 
     except Exception as e:
-        log.warning(f"Glassnode feed error: {e}")
+        log.warning(f"Finnhub feed error: {e}")
         _clear_cache(cache_key)
         return 0.0
 
@@ -273,8 +275,8 @@ def get_ta_signal(symbol: str = "BTCUSDT", interval: str = "5m") -> float:
 # 5. ODDS API: Sports/Politics Odds
 # ────────────────────────────────────────────
 def get_odds_signal() -> float:
-    """Odds API signal (sports/politics implied prob). Returns -1.0 to 1.0."""
-    if not Config.ODDS_API_KEY:
+    """Odds API signal (sports/politics implied prob). Uses rotating keys."""
+    if not Config.ODDS_API_KEYS:
         return 0.0
 
     cache_key = "odds"
@@ -309,15 +311,18 @@ def get_composite_signal(asset: str = "btc") -> float:
     }
 
     news_q, social_q, ta_sym = query_map.get(asset, query_map["btc"])
+    finnhub_sym = {"btc": "BINANCE:BTCUSDT", "eth": "BINANCE:ETHUSDT"}.get(
+        asset, "BINANCE:BTCUSDT"
+    )
 
-    onchain = get_onchain_signal()
+    finnhub = get_finnhub_signal(finnhub_sym)
     news = get_news_signal(news_q)
     social = get_social_signal(social_q)
     ta = get_ta_signal(ta_sym)
     odds = get_odds_signal()
 
     composite = (
-        Config.WEIGHT_ONCHAIN * onchain
+        Config.WEIGHT_FINNHUB * finnhub
         + Config.WEIGHT_NEWS * news
         + Config.WEIGHT_SOCIAL * social
         + Config.WEIGHT_TA * ta
@@ -327,7 +332,7 @@ def get_composite_signal(asset: str = "btc") -> float:
     composite = max(-1.0, min(1.0, composite))
 
     log.info(
-        f"Signal [{asset}]: onchain={onchain:.1f} news={news:.1f} "
+        f"Signal [{asset}]: finnhub={finnhub:.1f} news={news:.1f} "
         f"social={social:.1f} ta={ta:.2f} odds={odds:.2f} -> composite={composite:.2f}"
     )
 

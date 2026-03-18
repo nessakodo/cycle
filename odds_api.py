@@ -1,7 +1,7 @@
 """
 Cycle Bot — The Odds API Integration
 Fetches odds for sports, politics, crypto events.
-Used for signal enrichment and arbitrage detection.
+Uses 6 rotating keys to stay under 500/day free tier.
 """
 
 import logging
@@ -14,15 +14,32 @@ log = logging.getLogger("cycle.odds_api")
 
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 
+# Round-robin key index
+_odds_key_index = 0
+
+
+def _get_next_odds_key() -> Optional[str]:
+    """Get next API key in rotation. Returns None if no keys configured."""
+    global _odds_key_index
+    keys = Config.ODDS_API_KEYS
+    if not keys:
+        return None
+    key = keys[_odds_key_index % len(keys)]
+    idx = _odds_key_index % len(keys)
+    _odds_key_index += 1
+    log.info(f"Using Odds API key index {idx + 1} of {len(keys)}")
+    return key
+
 
 def get_sports() -> list:
     """Get available sports. Returns list of sport keys."""
-    if not Config.ODDS_API_KEY:
+    api_key = _get_next_odds_key()
+    if not api_key:
         return []
     try:
         resp = requests.get(
             f"{ODDS_BASE}/sports",
-            params={"apiKey": Config.ODDS_API_KEY},
+            params={"apiKey": api_key},
             timeout=10,
         )
         resp.raise_for_status()
@@ -40,15 +57,16 @@ def get_odds(
 ) -> list:
     """
     Get odds for a sport. Returns list of events with bookmaker odds.
-    Compare to Kalshi for arbitrage / signal enrichment.
+    Uses rotating API key.
     """
-    if not Config.ODDS_API_KEY:
+    api_key = _get_next_odds_key()
+    if not api_key:
         return []
     try:
         resp = requests.get(
             f"{ODDS_BASE}/sports/{sport}/odds",
             params={
-                "apiKey": Config.ODDS_API_KEY,
+                "apiKey": api_key,
                 "regions": regions,
                 "markets": markets,
             },
@@ -65,8 +83,9 @@ def get_odds_signal(sport: str = "americanfootball_nfl") -> float:
     """
     Derive a simple signal from odds (e.g. home team implied prob).
     Returns -1.0 to 1.0 (bearish to bullish).
+    Uses rotating API key.
     """
-    if not Config.ODDS_API_KEY:
+    if not Config.ODDS_API_KEYS:
         return 0.0
     try:
         events = get_odds(sport=sport)

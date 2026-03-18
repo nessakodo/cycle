@@ -54,6 +54,7 @@ def main():
     print("=" * 60)
     print()
     print("  ⚠️  US LEGAL MODE — Kalshi + Tradier + Odds API.")
+    print("  Finnhub integrated + Odds API rotation (6 keys) + Tradier sandbox.")
     print("  Paper test first, then live with small size.")
     print()
 
@@ -71,6 +72,11 @@ def main():
 
     if Config.PAPER_MODE:
         log.info("Running in PAPER MODE — no real orders will be placed")
+        log.info("PAPER MODE — Tradier sandbox active (if configured)")
+        log.info(
+            f"Paper testing: Finnhub + Odds API ({len(Config.ODDS_API_KEYS)} keys) + "
+            "Tradier sandbox. Watch logs for signal feeds."
+        )
     else:
         log.warning("LIVE MODE — real money at stake")
         print("  Starting in 5 seconds... Ctrl+C to abort")

@@ -19,8 +19,12 @@ class Config:
         "https://trading-api.kalshi.com/trade-api/v2",
     )
 
-    # The Odds API (sports, politics, crypto odds for signal enrichment)
-    ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
+    # The Odds API (6 keys for rotation, stay under 500/day free tier)
+    ODDS_API_KEYS = [
+        k.strip()
+        for k in os.getenv("ODDS_API_KEYS", "").split(",")
+        if k.strip()
+    ]
 
     # Tradier (Reg T margin, equities/options)
     TRADIER_ACCESS_TOKEN = os.getenv("TRADIER_ACCESS_TOKEN", "")
@@ -31,7 +35,7 @@ class Config:
     )  # Use https://api.tradier.com/v1 for live
 
     # Signal Feed Keys
-    GLASSNODE_API_KEY = os.getenv("GLASSNODE_API_KEY", "")
+    FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
     NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
     X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN", "")
 
@@ -44,10 +48,10 @@ class Config:
     PIVOT_INTERVAL_SEC = int(os.getenv("PIVOT_INTERVAL_SEC", "1800"))
 
     # Signal Weights (sum to 1.0)
-    WEIGHT_ONCHAIN = 0.30
+    WEIGHT_FINNHUB = 0.35
     WEIGHT_NEWS = 0.20
     WEIGHT_SOCIAL = 0.15
-    WEIGHT_TA = 0.20
+    WEIGHT_TA = 0.15
     WEIGHT_ODDS = 0.15
 
     # Risk
@@ -68,14 +72,14 @@ class Config:
     @classmethod
     def print_status(cls):
         feeds = []
-        if cls.GLASSNODE_API_KEY:
-            feeds.append("Glassnode")
+        if cls.FINNHUB_API_KEY:
+            feeds.append("Finnhub")
         if cls.NEWSAPI_KEY:
             feeds.append("NewsAPI")
         if cls.X_BEARER_TOKEN:
             feeds.append("X/Twitter")
-        if cls.ODDS_API_KEY:
-            feeds.append("Odds API")
+        if cls.ODDS_API_KEYS:
+            feeds.append(f"Odds API ({len(cls.ODDS_API_KEYS)} keys)")
         feeds.append("Binance TA (public)")
         feeds.append("VADER Sentiment")
 
