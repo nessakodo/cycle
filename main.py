@@ -25,6 +25,11 @@ import time
 from config import Config
 from engine import QuotingEngine
 
+# Require Python 3 (e.g. python3 main.py)
+if sys.version_info[0] < 3:
+    print("Cycle requires Python 3. Use: python3 main.py")
+    sys.exit(1)
+
 
 def setup_logging():
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

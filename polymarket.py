@@ -68,14 +68,13 @@ class PolymarketClient:
             resp.raise_for_status()
             all_markets = resp.json()
 
-            # Before filtering: log top 5 raw market questions + slugs
-            log.info(
-                "Top 5 raw markets: "
-                + str([
-                    m.get("question", "") + " | " + m.get("slug", "")
-                    for m in (all_markets or [])[:5]
-                ])
-            )
+            # Before filtering: log top 5 raw markets (question + slug + ID[:12])
+            for i, m in enumerate((all_markets or [])[:5]):
+                q = m.get("question", "No question")
+                s = m.get("slug", "No slug")
+                mid = (m.get("id") or m.get("condition_id") or "No ID")
+                mid_short = str(mid)[:12] if mid else "No ID"
+                log.info(f"Top 5 raw [{i+1}]: {q} | {s} | ID: {mid_short}...")
 
             matched = []
             for m in all_markets:
@@ -110,7 +109,8 @@ class PolymarketClient:
             log.info(f"Discovered {len(matched)} markets for {keywords}")
             for i, m in enumerate(matched):
                 mid = m.get("id", "")
-                log.info(f"Matched market {i+1}: {m['question']} | ID: {mid[:12]}...")
+                mid_short = mid[:12] if mid else ""
+                log.info(f"Matched market {i+1}: {m['question']} | ID: {mid_short}... | slug: {m.get('slug', '')}")
             return matched
 
         except Exception as e:
@@ -122,7 +122,7 @@ class PolymarketClient:
             keywords=[
                 "bitcoin", "btc", "crypto", "price", "up", "down",
                 "bin", "future", "next", "minute", "min",
-                "5-minute", "15-minute", "hour",
+                "5-minute", "15-minute", "hour", "5m", "15m", "1h",
             ],
             time_buckets=[
                 "minute", "min", "5-minute", "15-minute", "hour",

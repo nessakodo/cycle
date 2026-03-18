@@ -25,6 +25,21 @@ echo "  CYCLE — Deploying to VPS"
 echo "================================================"
 echo ""
 
+# 0. Python version check (python3 required)
+if ! command -v python3 &>/dev/null; then
+    echo "ERROR: python3 not found. Install with: sudo apt install python3 python3-venv"
+    exit 1
+fi
+PY3_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "?")
+echo "[0/6] Python: $(which python3) (${PY3_VER})"
+if command -v python &>/dev/null; then
+    PY_VER=$(python -c 'import sys; print(sys.version_info.major)' 2>/dev/null || echo "?")
+    if [ "$PY_VER" = "2" ]; then
+        echo "  Note: 'python' points to Python 2. Use 'python3' or: sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1"
+    fi
+fi
+echo ""
+
 # 1. System dependencies
 echo "[1/5] Installing system dependencies..."
 sudo apt update -qq
@@ -111,7 +126,7 @@ echo "================================================"
 echo ""
 echo "  1. Fill your keys:    nano ${SCRIPT_DIR}/.env"
 echo ""
-echo "  2. Paper test first:  python main.py"
+echo "  2. Paper test first:  source venv/bin/activate && python main.py"
 echo "     (runs in foreground so you can watch logs)"
 echo "     (Ctrl+C to stop)"
 echo ""

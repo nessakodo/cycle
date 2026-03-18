@@ -6,3 +6,4 @@ cycle.log
 dist/
 build/
 .venv/
+venv/
