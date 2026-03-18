@@ -39,7 +39,7 @@ class KalshiClient:
             raise FileNotFoundError(f"PEM file not found at {pem_path}")
 
         log.info(
-            f"Kalshi API type: {Config.KALSHI_API_TYPE} — URL: {Config.KALSHI_BASE_URL}"
+            f"Kalshi API: {Config.KALSHI_API_TYPE.upper()} → {Config.KALSHI_BASE_URL}"
         )
 
         if HAS_SDK and KalshiSDKClient:
@@ -77,7 +77,7 @@ class KalshiClient:
         """
         keywords = (
             self.DISCOVERY_KEYWORDS_ELECTIONS
-            if (filter_by in ("elections", "politics") or Config.KALSHI_API_TYPE == "elections")
+            if filter_by in ("elections", "politics")
             else self.DISCOVERY_KEYWORDS
         )
         try:

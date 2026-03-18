@@ -17,16 +17,11 @@ class Config:
         "KALSHI_PRIVATE_KEY_PATH",
         "/home/nessa/cycle/kalshi_private_key.pem",
     )
-    KALSHI_API_TYPE = os.getenv("KALSHI_API_TYPE", "main")  # "main" or "elections"
-    KALSHI_MAIN_URL = "https://api.kalshi.co/trade-api/v2"
-    KALSHI_ELECTIONS_URL = "https://api.elections.kalshi.com/trade-api/v2"
+    KALSHI_API_TYPE = os.getenv("KALSHI_API_TYPE", "demo")  # "demo" or "main"
+    KALSHI_DEMO_URL = "https://demo-api.kalshi.co/trade-api/v2"
+    KALSHI_PROD_URL = "https://api.elections.kalshi.com/trade-api/v2"
     KALSHI_BASE_URL = (
-        os.getenv("KALSHI_BASE_URL")
-        or (
-            KALSHI_ELECTIONS_URL
-            if KALSHI_API_TYPE == "elections"
-            else KALSHI_MAIN_URL
-        )
+        KALSHI_PROD_URL if KALSHI_API_TYPE == "main" else KALSHI_DEMO_URL
     )
     MANUAL_KALSHI_TICKERS = [
         t.strip()
