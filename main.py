@@ -56,6 +56,9 @@ def main():
     print("  ⚠️  US LEGAL MODE — Kalshi + Tradier + Odds API.")
     print("  Finnhub integrated + Odds API rotation (6 keys) + Tradier sandbox.")
     print("  Kalshi using PEM file path from .env — file must be present on droplet.")
+    print(
+        f"  Kalshi API type: {Config.KALSHI_API_TYPE} — using {Config.KALSHI_BASE_URL}"
+    )
     print("  Paper test first, then live with small size.")
     print()
 

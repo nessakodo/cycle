@@ -38,6 +38,10 @@ class KalshiClient:
             log.error(f"PEM file not found at {pem_path}")
             raise FileNotFoundError(f"PEM file not found at {pem_path}")
 
+        log.info(
+            f"Kalshi API type: {Config.KALSHI_API_TYPE} — URL: {Config.KALSHI_BASE_URL}"
+        )
+
         if HAS_SDK and KalshiSDKClient:
             try:
                 with open(pem_path, "r") as f:
@@ -60,9 +64,22 @@ class KalshiClient:
         "fed", "rate", "cut", "election", "trump", "biden",
         "bitcoin", "btc", "crypto", "price",
     )
+    DISCOVERY_KEYWORDS_ELECTIONS = (
+        "election", "trump", "biden", "politics", "president",
+        "senate", "congress", "vote", "democrat", "republican",
+    )
 
-    def discover_markets(self, limit: int = 50) -> list:
-        """Discover open markets filtered by keywords. Returns list of dicts with ticker, title, etc."""
+    def discover_markets(
+        self, limit: int = 50, filter_by: Optional[str] = None
+    ) -> list:
+        """Discover open markets filtered by keywords. Returns list of dicts with ticker, title, etc.
+        filter_by: None (auto from Config.KALSHI_API_TYPE), "elections", or "politics".
+        """
+        keywords = (
+            self.DISCOVERY_KEYWORDS_ELECTIONS
+            if (filter_by in ("elections", "politics") or Config.KALSHI_API_TYPE == "elections")
+            else self.DISCOVERY_KEYWORDS
+        )
         try:
             if self.client:
                 resp = self.client.get_markets(limit=limit, status="open")
@@ -82,7 +99,7 @@ class KalshiClient:
                 status = getattr(m, "status", None) or m.get("status", "open")
                 vol = getattr(m, "volume", 0) or m.get("volume", 0)
                 combined = (f"{ticker} {title}").lower()
-                if not any(kw in combined for kw in self.DISCOVERY_KEYWORDS):
+                if not any(kw in combined for kw in keywords):
                     continue
                 yes_bid, yes_ask = None, None
                 if self.client:
