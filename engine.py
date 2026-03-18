@@ -159,6 +159,19 @@ class QuotingEngine:
 
             new_markets = {}
 
+            # TEMP FOR DEBUG — replace with real IDs from polymarket.com inspect / Gamma API
+            if not btc_markets and not meme_markets:
+                fallback = [
+                    {"id": "PLACEHOLDER_BTC_5MIN_ID", "question": "BTC up or down in next 5 minutes?", "tokens": [{"token_id": "PLACEHOLDER_YES_TOKEN_ID"}]},
+                    {"id": "PLACEHOLDER_PEPE_15MIN_ID", "question": "PEPE up or down in next 15 minutes?", "tokens": [{"token_id": "PLACEHOLDER_YES_TOKEN_ID"}]},
+                ]
+                for m in fallback:
+                    if m["id"] not in self.markets:
+                        asset_type = "btc" if "btc" in m["question"].lower() else "pepe"
+                        self.markets[m["id"]] = MarketState(m, asset_type)
+                log.info("No markets discovered — using fallback test markets (temporary)")
+                new_markets = dict(self.markets)
+
             # Always include top BTC market
             if btc_markets:
                 m = btc_markets[0]

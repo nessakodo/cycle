@@ -46,9 +46,13 @@ class PolymarketClient:
         """
         Find active short-term markets from Gamma API.
         Returns list of dicts: {id, question, slug, volume, tokens, spread}
+        Matching is case-insensitive (question/slug lowercased).
         """
         if time_buckets is None:
-            time_buckets = ["5-minute", "15-minute", "1-hour"]
+            time_buckets = [
+                "minute", "min", "5-minute", "15-minute", "hour",
+                "5m", "15m", "1h", "m", "h",
+            ]
 
         try:
             resp = requests.get(
@@ -63,6 +67,15 @@ class PolymarketClient:
             )
             resp.raise_for_status()
             all_markets = resp.json()
+
+            # Before filtering: log top 5 raw market questions + slugs
+            log.info(
+                "Top 5 raw markets: "
+                + str([
+                    m.get("question", "") + " | " + m.get("slug", "")
+                    for m in (all_markets or [])[:5]
+                ])
+            )
 
             matched = []
             for m in all_markets:
@@ -95,6 +108,9 @@ class PolymarketClient:
 
             matched.sort(key=lambda x: x["volume"], reverse=True)
             log.info(f"Discovered {len(matched)} markets for {keywords}")
+            for i, m in enumerate(matched):
+                mid = m.get("id", "")
+                log.info(f"Matched market {i+1}: {m['question']} | ID: {mid[:12]}...")
             return matched
 
         except Exception as e:
@@ -103,14 +119,27 @@ class PolymarketClient:
 
     def find_btc_markets(self):
         return self.discover_markets(
-            keywords=["bitcoin", "btc"],
-            time_buckets=["5-minute", "15-minute", "1-hour"],
+            keywords=[
+                "bitcoin", "btc", "crypto", "price", "up", "down",
+                "bin", "future", "next", "minute", "min",
+                "5-minute", "15-minute", "hour",
+            ],
+            time_buckets=[
+                "minute", "min", "5-minute", "15-minute", "hour",
+                "5m", "15m", "1h", "m", "h",
+            ],
         )
 
     def find_meme_markets(self):
         return self.discover_markets(
-            keywords=["pepe", "doge", "dogecoin", "shib", "shiba"],
-            time_buckets=["5-minute", "15-minute", "1-hour"],
+            keywords=[
+                "pepe", "doge", "dogecoin", "shib", "shiba",
+                "meme", "memecoin",
+            ],
+            time_buckets=[
+                "minute", "min", "5-minute", "15-minute", "hour",
+                "5m", "15m", "1h", "m", "h",
+            ],
         )
 
     # ──────────────── Orderbook ────────────────
