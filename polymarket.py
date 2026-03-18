@@ -14,6 +14,11 @@ from config import Config
 
 log = logging.getLogger("cycle.polymarket")
 
+PROXIES = {}
+if Config.PROXY_HTTP or Config.PROXY_HTTPS:
+    PROXIES = {"http": Config.PROXY_HTTP, "https": Config.PROXY_HTTPS}
+    log.info(f"Using proxies: {PROXIES}")
+
 
 class PolymarketClient:
     """Wrapper around py-clob-client with Gamma API market discovery."""
@@ -63,6 +68,7 @@ class PolymarketClient:
                     "order": "volume",
                     "ascending": "false",
                 },
+                proxies=PROXIES if PROXIES else None,
                 timeout=10,
             )
             resp.raise_for_status()

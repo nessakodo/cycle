@@ -16,6 +16,8 @@ class Config:
     POLY_GAMMA = "https://gamma-api.polymarket.com"
     CHAIN_ID = 137  # Polygon mainnet
     POLY_PRIVATE_KEY = os.getenv("POLY_PRIVATE_KEY", "")
+    PROXY_HTTP = os.getenv("PROXY_HTTP") or None
+    PROXY_HTTPS = os.getenv("PROXY_HTTPS") or None
 
     # Kraken Futures
     KRAKEN_API_KEY = os.getenv("KRAKEN_API_KEY", "")
