@@ -127,23 +127,33 @@ class QuotingEngine:
             all_markets = self.kalshi.discover_markets(limit=50)
             new_markets = {}
 
-            # Select top markets by volume (crypto, politics, etc.)
-            keywords = ["btc", "bitcoin", "crypto", "eth", "trump", "biden", "fed", "inflation"]
-            for m in all_markets:
-                q = (m.get("question", "") or "").lower()
-                if any(kw in q for kw in keywords):
+            # Use MANUAL_KALSHI_TICKERS if discovery is empty
+            if not all_markets and Config.MANUAL_KALSHI_TICKERS:
+                for ticker in Config.MANUAL_KALSHI_TICKERS:
+                    m = {"ticker": ticker, "id": ticker, "question": ticker, "volume": 0}
+                    new_markets[ticker] = MarketState(m, self._detect_asset_type(m))
+                log.info(
+                    f"Using {len(new_markets)} manual ticker(s): "
+                    f"{', '.join(Config.MANUAL_KALSHI_TICKERS)}"
+                )
+            else:
+                for m in all_markets:
                     cid = m.get("ticker", m.get("id", ""))
                     if cid and cid not in new_markets:
                         asset = self._detect_asset_type(m)
                         new_markets[cid] = MarketState(m, asset)
-                        log.info(f"Market: {m.get('question', '')[:50]}...")
 
-            # If no keyword match, take top 2 by volume
-            if not new_markets and all_markets:
-                for m in sorted(all_markets, key=lambda x: x.get("volume", 0), reverse=True)[:2]:
-                    cid = m.get("ticker", m.get("id", ""))
-                    if cid:
-                        new_markets[cid] = MarketState(m, self._detect_asset_type(m))
+            n = len(new_markets)
+            if n > 0:
+                first_three = list(new_markets.items())[:3]
+                for cid, state in first_three:
+                    log.info(f"Kalshi market: {cid} — {state.question[:50]}...")
+                log.info(f"Kalshi discovery: {n} market(s) found")
+            else:
+                log.warning(
+                    "Kalshi discovery empty — add MANUAL_KALSHI_TICKERS in .env "
+                    "or switch to live API"
+                )
 
             for old_cid in self.markets:
                 if old_cid not in new_markets:

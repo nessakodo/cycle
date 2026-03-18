@@ -56,8 +56,13 @@ class KalshiClient:
             log.error("Kalshi SDK required. pip install kalshi_python_sync")
             raise ImportError("kalshi_python_sync required")
 
+    DISCOVERY_KEYWORDS = (
+        "fed", "rate", "cut", "election", "trump", "biden",
+        "bitcoin", "btc", "crypto", "price",
+    )
+
     def discover_markets(self, limit: int = 50) -> list:
-        """Discover open markets. Returns list of dicts with ticker, title, etc."""
+        """Discover open markets filtered by keywords. Returns list of dicts with ticker, title, etc."""
         try:
             if self.client:
                 resp = self.client.get_markets(limit=limit, status="open")
@@ -74,14 +79,35 @@ class KalshiClient:
             for m in markets:
                 ticker = getattr(m, "ticker", None) or m.get("ticker", "")
                 title = getattr(m, "title", None) or m.get("title", "")
+                status = getattr(m, "status", None) or m.get("status", "open")
                 vol = getattr(m, "volume", 0) or m.get("volume", 0)
+                combined = (f"{ticker} {title}").lower()
+                if not any(kw in combined for kw in self.DISCOVERY_KEYWORDS):
+                    continue
+                yes_bid, yes_ask = None, None
+                if self.client:
+                    book = self.get_orderbook(ticker)
+                    if book:
+                        yes_bids = book.get("yes_bids", [])
+                        no_bids = book.get("no_bids", [])
+                        yes_bid = yes_bids[0][0] if yes_bids else None
+                        yes_ask = (1.0 - no_bids[0][0]) if no_bids else None
+                log.info(
+                    f"Kalshi market: ticker={ticker} title={title[:50]}... "
+                    f"status={status} yes_bid={yes_bid} yes_ask={yes_ask}"
+                )
                 result.append({
                     "id": ticker,
                     "ticker": ticker,
                     "question": title,
                     "volume": float(vol or 0),
                 })
-            log.info(f"Discovered {len(result)} open Kalshi markets")
+            if not result:
+                log.warning(
+                    "No open Kalshi markets found — try live API URL or add keywords"
+                )
+            else:
+                log.info(f"Discovered {len(result)} open Kalshi markets (keyword-filtered)")
             return result
         except Exception as e:
             log.warning(f"Kalshi market discovery error: {e}")

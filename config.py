@@ -21,6 +21,11 @@ class Config:
         "KALSHI_BASE_URL",
         "https://trading-api.kalshi.com/trade-api/v2",
     )
+    MANUAL_KALSHI_TICKERS = [
+        t.strip()
+        for t in os.getenv("MANUAL_KALSHI_TICKERS", "").split(",")
+        if t.strip()
+    ]
 
     # The Odds API (6 keys for rotation, stay under 500/day free tier)
     ODDS_API_KEYS = [
