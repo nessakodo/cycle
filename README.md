@@ -10,7 +10,7 @@ Kalshi market-making bot with Tradier margin execution and Odds API signal enric
 # 1. Clone and setup
 cd cycle
 cp .env.example .env
-nano .env   # fill KALSHI_API_KEY, KALSHI_PRIVATE_KEY (PEM string), etc.
+nano .env   # fill KALSHI_API_KEY, KALSHI_PRIVATE_KEY_PATH (PEM file path), etc.
 
 # 2. Create venv (Python 3.8+)
 python3 -m venv venv
@@ -24,7 +24,7 @@ python main.py
 ## Requirements
 
 - **Python 3.8+**
-- Kalshi account + API key + private key PEM (paste in .env)
+- Kalshi account + API key + private key PEM file (upload to droplet, set path in .env)
 - Tradier account (optional, for margin hedge)
 - Odds API key (optional, for signal enrichment)
 

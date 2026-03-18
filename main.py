@@ -55,7 +55,7 @@ def main():
     print()
     print("  ⚠️  US LEGAL MODE — Kalshi + Tradier + Odds API.")
     print("  Finnhub integrated + Odds API rotation (6 keys) + Tradier sandbox.")
-    print("  Using KALSHI_PRIVATE_KEY as raw string in .env — keep .env secure, never commit.")
+    print("  Kalshi using PEM file path from .env — file must be present on droplet.")
     print("  Paper test first, then live with small size.")
     print()
 
