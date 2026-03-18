@@ -270,6 +270,30 @@ def get_ta_signal(symbol: str = "BTCUSDT", interval: str = "5m") -> float:
 
 
 # ────────────────────────────────────────────
+# 5. ODDS API: Sports/Politics Odds
+# ────────────────────────────────────────────
+def get_odds_signal() -> float:
+    """Odds API signal (sports/politics implied prob). Returns -1.0 to 1.0."""
+    if not Config.ODDS_API_KEY:
+        return 0.0
+
+    cache_key = "odds"
+    cached = _cached(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from odds_api import get_odds_signal as fetch_odds
+        sig = fetch_odds(sport="americanfootball_nfl")
+        _set_cache(cache_key, sig)
+        return sig
+    except Exception as e:
+        log.warning(f"Odds API feed error: {e}")
+        _clear_cache(cache_key)
+        return 0.0
+
+
+# ────────────────────────────────────────────
 # COMPOSITE SIGNAL
 # ────────────────────────────────────────────
 def get_composite_signal(asset: str = "btc") -> float:
@@ -280,6 +304,8 @@ def get_composite_signal(asset: str = "btc") -> float:
         "pepe": ("PEPE memecoin", "PEPE", "PEPEUSDT"),
         "doge": ("dogecoin DOGE", "dogecoin", "DOGEUSDT"),
         "shib": ("SHIB shiba", "SHIB", "SHIBUSDT"),
+        "politics": ("election OR trump OR biden", "election", "SPY"),
+        "general": ("bitcoin OR BTC", "bitcoin", "BTCUSDT"),
     }
 
     news_q, social_q, ta_sym = query_map.get(asset, query_map["btc"])
@@ -288,19 +314,21 @@ def get_composite_signal(asset: str = "btc") -> float:
     news = get_news_signal(news_q)
     social = get_social_signal(social_q)
     ta = get_ta_signal(ta_sym)
+    odds = get_odds_signal()
 
     composite = (
         Config.WEIGHT_ONCHAIN * onchain
         + Config.WEIGHT_NEWS * news
         + Config.WEIGHT_SOCIAL * social
         + Config.WEIGHT_TA * ta
+        + Config.WEIGHT_ODDS * odds
     )
 
     composite = max(-1.0, min(1.0, composite))
 
     log.info(
         f"Signal [{asset}]: onchain={onchain:.1f} news={news:.1f} "
-        f"social={social:.1f} ta={ta:.2f} -> composite={composite:.2f}"
+        f"social={social:.1f} ta={ta:.2f} odds={odds:.2f} -> composite={composite:.2f}"
     )
 
     return composite

@@ -21,7 +21,8 @@ VENV_DIR="${SCRIPT_DIR}/venv"
 
 echo ""
 echo "================================================"
-echo "  CYCLE — Deploying to VPS"
+echo "  CYCLE — US-Legal Market Maker"
+echo "  Kalshi + Tradier + Odds API"
 echo "================================================"
 echo ""
 
@@ -71,14 +72,13 @@ if [ ! -f "${SCRIPT_DIR}/.env" ]; then
     echo "     nano ${SCRIPT_DIR}/.env"
     echo ""
     echo "  Required keys:"
-    echo "    - POLY_PRIVATE_KEY  (your Polymarket wallet EOA hex key)"
-    echo "    - KRAKEN_API_KEY    (Kraken Futures API key)"
-    echo "    - KRAKEN_API_SECRET (Kraken Futures API secret)"
+    echo "    - KALSHI_API_KEY         (from kalshi.com → API Keys)"
+    echo "    - KALSHI_PRIVATE_KEY_PATH (path to .pem file)"
     echo ""
-    echo "  Optional (but recommended):"
-    echo "    - GLASSNODE_API_KEY (free tier works)"
-    echo "    - NEWSAPI_KEY       (free tier works)"
-    echo "    - X_BEARER_TOKEN    (X/Twitter API bearer)"
+    echo "  Optional:"
+    echo "    - ODDS_API_KEY       (the-odds-api.com)"
+    echo "    - TRADIER_ACCESS_TOKEN, TRADIER_ACCOUNT_ID"
+    echo "    - GLASSNODE_API_KEY, NEWSAPI_KEY, X_BEARER_TOKEN"
     echo ""
 else
     echo "  .env already exists."
@@ -88,7 +88,7 @@ fi
 echo "[4/5] Installing systemd service..."
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<SYSTEMD
 [Unit]
-Description=Cycle Polymarket Market-Making Bot
+Description=Cycle US-Legal Kalshi Market Maker
 After=network-online.target
 Wants=network-online.target
 
@@ -140,13 +140,11 @@ echo "     sudo systemctl restart cycle"
 echo ""
 echo "  5. Emergency stop:"
 echo "     python killswitch.py"
-echo "     (cancels all orders + closes hedges)"
+echo "     python killswitch.py --tradier   # also close Tradier"
 echo ""
 echo "  6. Check status:"
 echo "     sudo systemctl status cycle"
 echo "     tail -f cycle.log"
 echo ""
-echo "  7. To use proxy:"
-echo "     export PROXY_HTTP=socks5://ip:port && export PROXY_HTTPS=socks5://ip:port && python3 main.py"
-echo "     (or add PROXY_HTTP= and PROXY_HTTPS= to .env)"
+echo "  US-legal: No VPN/proxy. Paper test first, then live with small size."
 echo ""

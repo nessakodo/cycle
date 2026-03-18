@@ -1,11 +1,9 @@
 """
 Cycle Bot — Quoting Engine
-Multi-market market-making with signal-driven skew, inventory management,
-Kraken futures hedge, meme coin auto-pivot, and real-time fill tracking.
+Kalshi market-making with signal-driven skew, Tradier margin execution,
+Odds API enrichment, and real-time fill tracking.
 
-Uses ThreadPoolExecutor for parallel quoting (cleaner shutdown than raw threads).
-Includes WS fill tracker with polling fallback.
-Logs funding rate every status cycle.
+US-legal: Kalshi (CFTC) + Tradier (Reg T) + Odds API.
 """
 
 import time
@@ -15,33 +13,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 from config import Config
 from signals import get_composite_signal
-from polymarket import PolymarketClient
-from hedge import KrakenFuturesHedge
-from ws_fills import FillTracker
+from kalshi import KalshiClient
+from tradier import TradierClient
+from ws_fills_kalshi import KalshiFillTracker
 
 log = logging.getLogger("cycle.engine")
 
 
 class MarketState:
-    """Tracks state for a single Polymarket market."""
+    """Tracks state for a single Kalshi market."""
 
     def __init__(self, market_info: dict, asset_type: str):
         self.market_info = market_info
         self.asset_type = asset_type
-        self.condition_id = market_info["id"]
+        self.condition_id = market_info.get("ticker", market_info.get("id", ""))
+        self.ticker = self.condition_id
         self.question = market_info.get("question", "")
         self.volume = market_info.get("volume", 0)
 
-        tokens = market_info.get("tokens", [])
-        self.yes_token_id = tokens[0].get("token_id", "") if tokens else ""
-
-        # Inventory (updated in real-time by FillTracker)
+        # Inventory (updated by KalshiFillTracker)
         self.inventory = 0.0
         self.total_buys = 0.0
         self.total_sells = 0.0
         self.quote_count = 0
-
-        # Hedge tracking
         self.hedge_position = 0.0
 
     @property
@@ -52,7 +46,6 @@ class MarketState:
 
     @property
     def pnl_estimate(self) -> float:
-        """Rough PnL from total buys vs sells."""
         return self.total_sells - self.total_buys
 
     def __repr__(self):
@@ -65,15 +58,14 @@ class MarketState:
 
 class QuotingEngine:
     """
-    Core engine: discovers markets, quotes in parallel, hedges, pivots.
-    Uses ThreadPoolExecutor for clean parallel quoting + shutdown.
+    Core engine: Kalshi markets, Tradier margin, Odds API signals.
     """
 
-    MAX_QUOTE_WORKERS = 4  # max parallel quoting threads
+    MAX_QUOTE_WORKERS = 4
 
     def __init__(self):
-        self.poly = PolymarketClient()
-        self.hedge_client = KrakenFuturesHedge()
+        self.kalshi = KalshiClient()
+        self.tradier = TradierClient()
         self.markets: dict[str, MarketState] = {}
         self.running = False
         self._lock = threading.Lock()
@@ -82,43 +74,31 @@ class QuotingEngine:
 
     def start(self):
         """Initialize connections and start all loops."""
-        log.info("Starting Cycle quoting engine...")
+        log.info("Starting Cycle quoting engine (US-legal mode)...")
 
-        # Connect to Polymarket
-        self.poly.connect()
-
-        # Discover initial markets
+        self.kalshi.connect()
         self._refresh_markets()
 
         if not self.markets:
             log.warning("No markets found. Will retry on next pivot cycle.")
 
         self.running = True
-
-        # Thread pool for parallel quoting
         self._executor = ThreadPoolExecutor(
-            max_workers=self.MAX_QUOTE_WORKERS, thread_name_prefix="quote"
+            max_workers=self.MAX_QUOTE_WORKERS,
+            thread_name_prefix="quote",
         )
 
-        # Start real-time fill tracker (WS + polling fallback)
-        self.fill_tracker = FillTracker(
+        self.fill_tracker = KalshiFillTracker(
             inventories=self.markets,
             lock=self._lock,
-            poly_client=self.poly,
+            kalshi_client=self.kalshi,
         )
         self.fill_tracker.start()
 
-        # Start background loops
         threads = [
-            threading.Thread(
-                target=self._quote_loop, daemon=True, name="quoter"
-            ),
-            threading.Thread(
-                target=self._pivot_loop, daemon=True, name="pivoter"
-            ),
-            threading.Thread(
-                target=self._status_loop, daemon=True, name="status"
-            ),
+            threading.Thread(target=self._quote_loop, daemon=True, name="quoter"),
+            threading.Thread(target=self._pivot_loop, daemon=True, name="pivoter"),
+            threading.Thread(target=self._status_loop, daemon=True, name="status"),
         ]
         for t in threads:
             t.start()
@@ -127,138 +107,81 @@ class QuotingEngine:
         return threads
 
     def stop(self):
-        """Graceful shutdown: cancel orders, close WS, shut down pool."""
+        """Graceful shutdown."""
         log.info("Stopping engine...")
         self.running = False
-
-        # Stop fill tracker (closes WS)
         if self.fill_tracker:
             self.fill_tracker.stop()
-
-        # Shut down thread pool
         if self._executor:
             self._executor.shutdown(wait=True, cancel_futures=True)
-            log.info("Thread pool shut down")
-
-        # Cancel all Polymarket orders
         try:
-            self.poly.cancel_all()
-            log.info("All Polymarket orders cancelled")
+            self.kalshi.cancel_all()
+            log.info("All Kalshi orders cancelled")
         except Exception as e:
             log.error(f"Error cancelling orders: {e}")
-
         log.info("Engine stopped")
 
-    # ──────────────── Market Discovery & Pivot ────────────────
-
     def _refresh_markets(self):
-        """Discover and select best markets (BTC + top meme)."""
+        """Discover and select Kalshi markets."""
         with self._lock:
-            btc_markets = self.poly.find_btc_markets()
-            meme_markets = self.poly.find_meme_markets()
-
+            all_markets = self.kalshi.discover_markets(limit=50)
             new_markets = {}
 
-            # TEMP FOR DEBUG — replace with real IDs from polymarket.com inspect / Gamma API
-            if not btc_markets and not meme_markets:
-                fallback = [
-                    {"id": "PLACEHOLDER_BTC_5MIN_ID", "question": "BTC up or down in next 5 minutes?", "tokens": [{"token_id": "PLACEHOLDER_YES_TOKEN_ID"}]},
-                    {"id": "PLACEHOLDER_PEPE_15MIN_ID", "question": "PEPE up or down in next 15 minutes?", "tokens": [{"token_id": "PLACEHOLDER_YES_TOKEN_ID"}]},
-                ]
-                for m in fallback:
-                    if m["id"] not in self.markets:
-                        asset_type = "btc" if "btc" in m["question"].lower() else "pepe"
-                        self.markets[m["id"]] = MarketState(m, asset_type)
-                log.info("No markets discovered — using fallback test markets (temporary)")
-                new_markets = dict(self.markets)
+            # Select top markets by volume (crypto, politics, etc.)
+            keywords = ["btc", "bitcoin", "crypto", "eth", "trump", "biden", "fed", "inflation"]
+            for m in all_markets:
+                q = (m.get("question", "") or "").lower()
+                if any(kw in q for kw in keywords):
+                    cid = m.get("ticker", m.get("id", ""))
+                    if cid and cid not in new_markets:
+                        asset = self._detect_asset_type(m)
+                        new_markets[cid] = MarketState(m, asset)
+                        log.info(f"Market: {m.get('question', '')[:50]}...")
 
-            # Always include top BTC market
-            if btc_markets:
-                m = btc_markets[0]
-                cid = m["id"]
-                if cid in self.markets:
-                    new_markets[cid] = self.markets[cid]
-                    new_markets[cid].market_info = m
-                    new_markets[cid].volume = m.get("volume", 0)
-                else:
-                    new_markets[cid] = MarketState(m, "btc")
-                log.info(f"BTC market: {m.get('question', '')[:60]}...")
+            # If no keyword match, take top 2 by volume
+            if not new_markets and all_markets:
+                for m in sorted(all_markets, key=lambda x: x.get("volume", 0), reverse=True)[:2]:
+                    cid = m.get("ticker", m.get("id", ""))
+                    if cid:
+                        new_markets[cid] = MarketState(m, self._detect_asset_type(m))
 
-            # Add top meme if it beats BTC on volume or spread
-            if meme_markets:
-                best_meme = meme_markets[0]
-                btc_vol = btc_markets[0].get("volume", 0) if btc_markets else 0
-
-                if (
-                    best_meme.get("volume", 0) > btc_vol * 1.3
-                    or best_meme.get("spread", 0) > 0.008
-                    or not btc_markets
-                ):
-                    cid = best_meme["id"]
-                    asset = self._detect_asset_type(best_meme)
-                    if cid in self.markets:
-                        new_markets[cid] = self.markets[cid]
-                    else:
-                        new_markets[cid] = MarketState(best_meme, asset)
-                    log.info(
-                        f"MEME pivot: {best_meme.get('question', '')[:60]}... "
-                        f"(vol={best_meme.get('volume', 0):.0f})"
-                    )
-
-            # Cancel orders for markets we're exiting
             for old_cid in self.markets:
                 if old_cid not in new_markets:
-                    self.poly.cancel_market_orders(old_cid)
-                    log.info(f"Exited market {old_cid}")
+                    self.kalshi.cancel_market_orders(old_cid)
 
             self.markets = new_markets
-
-            # Update fill tracker reference
             if self.fill_tracker:
                 self.fill_tracker.inventories = self.markets
 
     def _detect_asset_type(self, market_info: dict) -> str:
-        text = (
-            market_info.get("question", "")
-            + " "
-            + market_info.get("slug", "")
-        ).lower()
-        if "pepe" in text:
-            return "pepe"
-        if "doge" in text or "dogecoin" in text:
-            return "doge"
-        if "shib" in text:
-            return "shib"
+        text = (market_info.get("question", "") + " " + market_info.get("ticker", "")).lower()
+        if "btc" in text or "bitcoin" in text:
+            return "btc"
         if "eth" in text or "ethereum" in text:
             return "eth"
-        return "btc"
-
-    # ──────────────── Quoting Logic ────────────────
+        if "trump" in text or "biden" in text:
+            return "politics"
+        return "general"
 
     def _compute_quotes(self, state: MarketState) -> Optional[tuple[float, float]]:
-        """Compute bid/ask for a market. Returns (bid, ask) or None."""
-        if not state.yes_token_id:
-            return None
-
-        book = self.poly.get_orderbook(state.yes_token_id)
+        """Compute bid/ask for a Kalshi market."""
+        book = self.kalshi.get_orderbook(state.ticker)
         if not book:
-            return None
-
-        bids = book.get("bids", [])
-        asks = book.get("asks", [])
-
-        if not bids or not asks:
-            mid = self.poly.get_midpoint(state.yes_token_id)
+            mid = self.kalshi.get_midpoint(state.ticker)
             if mid is None:
                 return None
         else:
-            best_bid = float(bids[0].get("price", 0))
-            best_ask = float(asks[0].get("price", 0))
-            if best_bid <= 0 or best_ask <= 0:
-                return None
-            mid = (best_bid + best_ask) / 2
+            yes_bids = book.get("yes_bids", [])
+            no_bids = book.get("no_bids", [])
+            if yes_bids:
+                best_yes = yes_bids[0][0]
+                best_no_implied = 1.0 - (no_bids[0][0] if no_bids else 0.5)
+                mid = (best_yes + best_no_implied) / 2
+            elif no_bids:
+                mid = 1.0 - no_bids[0][0]
+            else:
+                mid = self.kalshi.get_midpoint(state.ticker) or 0.5
 
-        # Signal skew
         sig = get_composite_signal(state.asset_type)
         half_spread = Config.SPREAD_BPS / 20000
         skew = 0.001 * sig
@@ -266,19 +189,13 @@ class QuotingEngine:
         bid_price = mid - half_spread + skew
         ask_price = mid + half_spread - skew
 
-        # Inventory skew: lean against position
         if state.inventory > Config.MAX_INVENTORY_USDC * 0.5:
-            inv_adj = 0.002 * (state.inventory_pct - 0.5)
-            bid_price -= inv_adj
+            bid_price -= 0.002 * (state.inventory_pct - 0.5)
         elif state.inventory < -Config.MAX_INVENTORY_USDC * 0.5:
-            inv_adj = 0.002 * (abs(state.inventory) / Config.MAX_INVENTORY_USDC - 0.5)
-            ask_price += inv_adj
+            ask_price += 0.002 * (abs(state.inventory) / Config.MAX_INVENTORY_USDC - 0.5)
 
-        # Clamp to valid Polymarket range
         bid_price = max(0.01, min(0.99, round(bid_price, 4)))
         ask_price = max(0.01, min(0.99, round(ask_price, 4)))
-
-        # Sanity: bid < ask
         if bid_price >= ask_price:
             bid_price = round(mid - half_spread, 4)
             ask_price = round(mid + half_spread, 4)
@@ -286,113 +203,88 @@ class QuotingEngine:
         return bid_price, ask_price
 
     def _quote_market(self, state: MarketState):
-        """Execute one quoting cycle for a single market."""
+        """Execute one quoting cycle."""
         quotes = self._compute_quotes(state)
         if quotes is None:
-            log.debug(f"Skipping quote for {state.asset_type}: no data")
             return
-
         bid_price, ask_price = quotes
-        size = Config.QUOTE_SIZE_USDC
+        size = Config.QUOTE_SIZE_CONTRACTS
 
         if Config.PAPER_MODE:
             log.info(
                 f"[PAPER] {state.asset_type.upper()} | "
                 f"BID {bid_price:.4f} ASK {ask_price:.4f} | "
-                f"Inv {state.inventory:.0f} | Size {size:.0f}"
+                f"Inv {state.inventory:.0f} | Size {size}"
             )
             state.quote_count += 1
             return
 
-        bid_result, ask_result = self.poly.place_quote(
-            token_id=state.yes_token_id,
-            condition_id=state.condition_id,
+        self.kalshi.place_quote(
+            ticker=state.ticker,
             bid_price=bid_price,
             ask_price=ask_price,
-            size=size,
+            count=size,
         )
-
         state.quote_count += 1
-
         log.info(
             f"LIVE {state.asset_type.upper()} | "
-            f"BID {bid_price:.4f} ASK {ask_price:.4f} | "
-            f"Inv {state.inventory:.0f}"
+            f"BID {bid_price:.4f} ASK {ask_price:.4f} | Inv {state.inventory:.0f}"
         )
 
-    def _check_hedge(self, state: MarketState):
-        """Hedge inventory skew on Kraken Futures if threshold breached."""
+    def _check_tradier_hedge(self, state: MarketState):
+        """Execute Tradier margin trade when inventory skew is high."""
         threshold = Config.MAX_INVENTORY_USDC * Config.INV_SKEW_THRESHOLD
         if abs(state.inventory) < threshold:
+            return
+        if not Config.TRADIER_ACCESS_TOKEN or not Config.TRADIER_ACCOUNT_ID:
             return
 
         direction = "sell" if state.inventory > 0 else "buy"
         size_usd = abs(state.inventory) * 0.5
 
-        result = self.hedge_client.place_hedge(
-            asset_type=state.asset_type,
+        # Map asset to Tradier symbol
+        symbol_map = {"btc": "BTC", "eth": "ETH", "politics": "SPY", "general": "SPY"}
+        symbol = symbol_map.get(state.asset_type, "SPY")
+
+        result = self.tradier.place_margin_trade(
+            symbol=symbol,
             direction=direction,
             size_usd=size_usd,
         )
-
         if result:
             adj = size_usd if direction == "buy" else -size_usd
             state.hedge_position += adj
 
-    # ──────────────── Main Loops ────────────────
-
     def _quote_loop(self):
-        """
-        Main quoting loop — uses ThreadPoolExecutor for parallel quoting.
-        Submits all markets simultaneously, waits for completion.
-        """
         log.info(f"Quote loop started (every {Config.QUOTE_INTERVAL_SEC}s)")
         while self.running:
             try:
                 with self._lock:
                     market_states = list(self.markets.values())
-
                 if not market_states:
                     time.sleep(Config.QUOTE_INTERVAL_SEC)
                     continue
-
-                # Submit all markets to thread pool in parallel
                 futures = {
-                    self._executor.submit(
-                        self._safe_quote_and_hedge, state
-                    ): state
-                    for state in market_states
+                    self._executor.submit(self._safe_quote_and_hedge, s): s
+                    for s in market_states
                 }
-
-                # Wait for all to complete (with timeout)
-                for future in as_completed(
-                    futures, timeout=Config.QUOTE_INTERVAL_SEC
-                ):
-                    state = futures[future]
+                for future in as_completed(futures, timeout=Config.QUOTE_INTERVAL_SEC):
                     try:
                         future.result()
                     except Exception as e:
-                        log.error(
-                            f"Quote future error ({state.asset_type}): {e}"
-                        )
-
+                        log.error(f"Quote future error: {e}")
             except Exception as e:
                 log.error(f"Quote loop error: {e}", exc_info=True)
-
             time.sleep(Config.QUOTE_INTERVAL_SEC)
 
     def _safe_quote_and_hedge(self, state: MarketState):
-        """Quote + hedge for one market, with error isolation."""
         try:
             self._quote_market(state)
-            self._check_hedge(state)
+            self._check_tradier_hedge(state)
         except Exception as e:
-            log.error(
-                f"Error quoting {state.asset_type}: {e}", exc_info=True
-            )
+            log.error(f"Error quoting {state.asset_type}: {e}", exc_info=True)
 
     def _pivot_loop(self):
-        """Market refresh/pivot — runs every PIVOT_INTERVAL_SEC."""
         log.info(f"Pivot loop started (every {Config.PIVOT_INTERVAL_SEC}s)")
         while self.running:
             time.sleep(Config.PIVOT_INTERVAL_SEC)
@@ -402,7 +294,6 @@ class QuotingEngine:
                 log.error(f"Pivot loop error: {e}", exc_info=True)
 
     def _status_loop(self):
-        """Periodic status + funding rate log — every 60 seconds."""
         while self.running:
             time.sleep(60)
             try:
@@ -410,29 +301,7 @@ class QuotingEngine:
                     if not self.markets:
                         log.info("No active markets")
                         continue
-
                     for cid, state in self.markets.items():
                         log.info(f"  {state}")
-
-                        # Funding rate per asset
-                        funding = self.hedge_client.get_funding_rate_for_asset(
-                            state.asset_type
-                        )
-                        symbol = self.hedge_client.SYMBOL_MAP.get(
-                            state.asset_type, "?"
-                        )
-                        log.info(
-                            f"  Funding {symbol}: {funding:.6f} "
-                            f"({'OK' if funding <= Config.MAX_FUNDING_RATE else 'HIGH - hedge paused'})"
-                        )
-
-                    # Fill tracker status
-                    if self.fill_tracker:
-                        ws_status = (
-                            "connected" if self.fill_tracker.connected
-                            else "disconnected (polling fallback active)"
-                        )
-                        log.info(f"  Fill WS: {ws_status}")
-
             except Exception as e:
                 log.debug(f"Status loop error: {e}")

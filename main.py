@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 """
 Cycle Bot — Entry Point
-Polymarket market-making + Kraken futures hedge.
+US-legal Kalshi market-making + Tradier margin + Odds API signals.
+
+DISCLAIMER: This bot uses CFTC-regulated Kalshi and Reg T margin via Tradier.
+No VPN/proxy required. Paper test first, then live with small size.
 
 Usage:
-    1. cp .env.example .env && nano .env    (fill your keys)
+    1. cp .env.example .env && nano .env
     2. pip install -r requirements.txt
-    3. python main.py                       (starts paper mode)
+    3. python main.py                       (paper mode)
     4. Set PAPER_MODE=false when ready
-
-Architecture:
-    config.py      -> All settings from .env
-    signals.py     -> Composite signal: Glassnode + NewsAPI + X + Binance TA
-    polymarket.py  -> Signed CLOB orders via py-clob-client
-    hedge.py       -> Kraken Futures hedge via python-kraken-sdk
-    ws_fills.py    -> Real-time fill tracking via WebSocket
-    engine.py      -> Multi-market parallel quoting, meme pivot, inventory mgmt
 """
 
 import sys
@@ -25,7 +20,6 @@ import time
 from config import Config
 from engine import QuotingEngine
 
-# Require Python 3 (e.g. python3 main.py)
 if sys.version_info[0] < 3:
     print("Cycle requires Python 3. Use: python3 main.py")
     sys.exit(1)
@@ -34,7 +28,6 @@ if sys.version_info[0] < 3:
 def setup_logging():
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
-
     logging.basicConfig(
         level=logging.INFO,
         format=fmt,
@@ -44,7 +37,6 @@ def setup_logging():
             logging.FileHandler("cycle.log", mode="a"),
         ],
     )
-
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("websocket").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -55,11 +47,14 @@ def main():
     log = logging.getLogger("cycle.main")
 
     print()
-    print("=" * 50)
-    print("  CYCLE — Polymarket Market Maker")
-    print("  Kraken Futures Hedge | Signal Skew")
-    print("  Real-time Fills | Meme Pivot")
-    print("=" * 50)
+    print("=" * 60)
+    print("  CYCLE — US-LEGAL Market Maker")
+    print("  Kalshi (CFTC) + Tradier (Reg T) + Odds API")
+    print("  No VPN/proxy required.")
+    print("=" * 60)
+    print()
+    print("  ⚠️  US LEGAL MODE — Kalshi + Tradier + Odds API.")
+    print("  Paper test first, then live with small size.")
     print()
 
     valid, errors = Config.validate()

@@ -1,6 +1,8 @@
-# Cycle — Polymarket Market Maker
+# Cycle — US-Legal Market Maker
 
-Polymarket market-making bot with Kraken Futures hedge, signal-driven skew, and real-time fill tracking.
+Kalshi market-making bot with Tradier margin execution and Odds API signal enrichment.
+
+**US-legal:** CFTC-regulated Kalshi + Reg T margin via Tradier. No VPN/proxy required.
 
 ## Quick Start
 
@@ -8,12 +10,11 @@ Polymarket market-making bot with Kraken Futures hedge, signal-driven skew, and 
 # 1. Clone and setup
 cd cycle
 cp .env.example .env
-nano .env   # fill POLY_PRIVATE_KEY, KRAKEN_API_KEY, KRAKEN_API_SECRET
+nano .env   # fill KALSHI_API_KEY, KALSHI_PRIVATE_KEY_PATH, etc.
 
-# 2. Create venv and install (Python 3 required)
+# 2. Create venv (Python 3.8+)
 python3 -m venv venv
 source venv/bin/activate   # Linux/macOS
-# or: venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 
 # 3. Run (paper mode by default)
@@ -22,28 +23,35 @@ python main.py
 
 ## Requirements
 
-- **Python 3.8+** — Use `python3 main.py` if `python` points to Python 2
-- Polymarket wallet (EOA private key)
-- Kraken Futures API keys
+- **Python 3.8+**
+- Kalshi account + API key + .pem file
+- Tradier account (optional, for margin hedge)
+- Odds API key (optional, for signal enrichment)
 
-## Files
+## Architecture
 
 | File | Purpose |
 |------|---------|
-| `main.py` | Entry point |
-| `engine.py` | Quoting engine, market discovery, pivot |
-| `polymarket.py` | CLOB orders, Gamma API market discovery |
-| `hedge.py` | Kraken Futures hedge |
-| `ws_fills.py` | WebSocket fill tracking |
-| `signals.py` | Composite signal (Glassnode, NewsAPI, TA) |
-| `config.py` | Settings from `.env` |
-| `debug_markets.py` | Debug Gamma API response |
+| `main.py` | Entry point, US-legal banner |
+| `engine.py` | Quoting engine, Kalshi + Tradier |
+| `kalshi.py` | Kalshi API (markets, orderbook, orders) |
+| `tradier.py` | Tradier margin trades |
+| `odds_api.py` | The Odds API (sports/politics) |
+| `signals.py` | Composite signal (Glassnode, NewsAPI, TA, Odds) |
+| `ws_fills_kalshi.py` | Kalshi fill tracking (polling) |
+| `config.py` | Settings from .env |
+| `killswitch.py` | Emergency cancel all |
+| `pnl.py` | PnL reporter |
 
-## Deploy (VPS)
+## Paper Testing on Droplet
 
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
+1. Deploy: `chmod +x deploy.sh && ./deploy.sh`
+2. Fill keys: `nano .env`
+3. Paper test: `source venv/bin/activate && python main.py`
+4. Watch logs for `[PAPER]` quotes
+5. After 24–48h paper, set `PAPER_MODE=false` for live
+6. Start small: `QUOTE_SIZE_CONTRACTS=5`, `MAX_INVENTORY_USDC=500`
 
-Then: `nano .env` to fill keys, then `source venv/bin/activate && python main.py` for paper test.
+## Disclaimer
+
+This bot is for educational purposes. Paper test first. Use small size when going live. Kalshi and Tradier are US-legal; no VPN/proxy needed.
