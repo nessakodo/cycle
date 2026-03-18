@@ -33,16 +33,22 @@ class KalshiClient:
 
     def connect(self):
         """Initialize and authenticate the Kalshi client."""
+        if not Config.KALSHI_PRIVATE_KEY or "BEGIN" not in Config.KALSHI_PRIVATE_KEY:
+            log.error("KALSHI_PRIVATE_KEY required in .env — paste your full PEM string")
+            raise ValueError("KALSHI_PRIVATE_KEY required in .env")
+
         if HAS_SDK and KalshiSDKClient:
             try:
-                with open(Config.KALSHI_PRIVATE_KEY_PATH, "r") as f:
-                    private_key = f.read()
+                private_key = Config.KALSHI_PRIVATE_KEY.strip()
+                # Handle newlines in .env (\\n or literal newlines)
+                if "\\n" in private_key:
+                    private_key = private_key.replace("\\n", "\n")
                 config = Configuration(host=Config.KALSHI_BASE_URL)
                 config.api_key_id = Config.KALSHI_API_KEY
                 config.private_key_pem = private_key
                 self.client = KalshiSDKClient(config)
                 self.authenticated = True
-                log.info("Kalshi client authenticated (SDK)")
+                log.info("Kalshi initialized with direct private key string")
             except Exception as e:
                 log.error(f"Kalshi auth failed: {e}")
                 self.authenticated = False

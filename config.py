@@ -13,7 +13,7 @@ load_dotenv()
 class Config:
     # Kalshi (CFTC-regulated, US-legal prediction market)
     KALSHI_API_KEY = os.getenv("KALSHI_API_KEY", "")
-    KALSHI_PRIVATE_KEY_PATH = os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
+    KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
     KALSHI_BASE_URL = os.getenv(
         "KALSHI_BASE_URL",
         "https://trading-api.kalshi.com/trade-api/v2",
@@ -63,8 +63,8 @@ class Config:
         errors = []
         if not cls.KALSHI_API_KEY:
             errors.append("KALSHI_API_KEY is required")
-        if not cls.KALSHI_PRIVATE_KEY_PATH or not os.path.isfile(cls.KALSHI_PRIVATE_KEY_PATH):
-            errors.append("KALSHI_PRIVATE_KEY_PATH must point to a valid .pem file")
+        if not cls.KALSHI_PRIVATE_KEY or "BEGIN" not in cls.KALSHI_PRIVATE_KEY:
+            errors.append("KALSHI_PRIVATE_KEY required in .env (paste full PEM string)")
         if errors:
             return False, errors
         return True, []
