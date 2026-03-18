@@ -1,0 +1,8 @@
+py-clob-client>=0.34.0
+python-kraken-sdk>=1.6.0
+requests>=2.31.0
+pandas>=2.0.0
+vaderSentiment>=3.3.2
+python-dotenv>=1.0.0
+websocket-client>=1.6.0
+socksio>=1.0.0
